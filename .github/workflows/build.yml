@@ -1,0 +1,64 @@
+name: Compiler OrthoQuiz.exe
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Vérifier les questions
+        run: python tools/check_questions.py
+
+      - name: Lancer les tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Indiquer au jeu où chercher les mises à jour de questions
+        shell: bash
+        run: |
+          printf '{"repo": "%s", "branch": "%s"}\n' "${{ github.repository }}" "${{ github.event.repository.default_branch }}" > config.json
+          cat config.json
+
+      - name: Installer PyInstaller
+        run: pip install pyinstaller
+
+      - name: Construire l'exe
+        run: >
+          pyinstaller --noconfirm --onefile --windowed
+          --name OrthoQuiz
+          --icon assets/icon.ico
+          --add-data "questions;questions"
+          --add-data "assets;assets"
+          --add-data "config.json;."
+          main.py
+
+      - name: Préparer le zip à envoyer
+        run: Compress-Archive -Path dist/OrthoQuiz.exe -DestinationPath dist/OrthoQuiz-windows.zip
+
+      - name: Garder l'exe dans les résultats du workflow
+        uses: actions/upload-artifact@v4
+        with:
+          name: OrthoQuiz-windows
+          path: |
+            dist/OrthoQuiz.exe
+            dist/OrthoQuiz-windows.zip
+
+      - name: Publier une release (uniquement pour un tag vX.Y)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/OrthoQuiz.exe
+            dist/OrthoQuiz-windows.zip
